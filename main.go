@@ -14,12 +14,12 @@ func main() {
 	}
 	args := os.Args[1:]
 
-	listen_address := args[0]
-	target_address := args[1]
+	listenAddress := args[0]
+	targetAddress := args[1]
 
-	fmt.Printf("Setting up a TCP tunnel redirecting all connections from %s to %s\n", listen_address, target_address)
+	fmt.Printf("Setting up a TCP tunnel redirecting all connections from %s to %s\n", listenAddress, targetAddress)
 
-	l, err := net.Listen("tcp", listen_address)
+	l, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		fmt.Println("Listen error: ", err.Error())
 		os.Exit(1)
@@ -33,14 +33,14 @@ func main() {
 			continue
 		}
 
-		go handleConnection(conn, target_address)
+		go handleConnection(conn, targetAddress)
 	}
 }
 
-func handleConnection(inbound net.Conn, target_address string) {
+func handleConnection(inbound net.Conn, targetAddress string) {
 	defer inbound.Close()
 
-	outbound, err := net.Dial("tcp", target_address)
+	outbound, err := net.Dial("tcp", targetAddress)
 	if err != nil {
 		fmt.Println("Outbound connect error: ", err.Error())
 		return
@@ -49,11 +49,60 @@ func handleConnection(inbound net.Conn, target_address string) {
 
 	fmt.Printf("Data incoming from %s is tunneled to %s\n", inbound.RemoteAddr().String(), outbound.RemoteAddr().String())
 
-	/*buf := make([]byte, 1024)
-	for {
-		len, err := inbound.Read(buf)
-		if err != nil {
+	streamTie(inbound, outbound)
+}
 
+// TODO currently releasing resources is not quite done (if one end ends the connection, the other may still be left open)
+
+/*
+Ties two connections so that all data send on one of them is redirected to the other.
+Works with stream-like connections (TCP, not UDP).
+ */
+func streamTie(c1 net.Conn, c2 net.Conn) {
+	go redirect(c1, c2)
+	redirect(c2, c1)
+}
+
+type Message []byte
+
+func reader(c net.Conn, ch chan Message) {
+	defer close(ch)
+	buff := make([]byte, 1024)
+	for {
+		length, err := c.Read(buff)
+		if err != nil {
+			fmt.Printf("Error reading: ", err.Error())
+			return
 		}
-	}*/
+		tmp := make([]byte, length)
+		copy(tmp, buff)
+		ch <- tmp
+	}
+}
+
+func startReader(c net.Conn) <-chan Message {
+	ch := make(chan Message, 10)
+	go reader(c, ch)
+	return ch
+}
+
+func writer(ch chan Message, c net.Conn) {
+	for msg := range ch {
+		c.Write(msg)
+	}
+}
+
+func startWriter(c net.Conn) chan<- Message {
+	ch := make(chan Message, 10)
+	go writer(ch, c)
+	return ch
+}
+
+func redirect(from net.Conn, to net.Conn) {
+	fc := startReader(from)
+	tc := startWriter(to)
+
+	for msg := range fc {
+		tc <- msg
+	}
 }
