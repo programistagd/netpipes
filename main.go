@@ -105,4 +105,5 @@ func redirect(from net.Conn, to net.Conn) {
 	for msg := range fc {
 		tc <- msg
 	}
+	close(tc)
 }
