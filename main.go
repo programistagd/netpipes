@@ -1,21 +1,26 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"netpipes/netpipe"
+	"netpipes/netpipe/tcp"
+	"netpipes/netpipe/udp"
+	"flag"
 )
 
 func main() {
-	prog := os.Args[0]
-	if len(os.Args) != 3 {
-		fmt.Printf("Usage: %s [listen address] [target]\n", prog)
+	isUdpPtr := flag.Bool("udp", false, "Create UDP tunnel instead of TCP tunnel")
+	listenAddrPtr := flag.String("from", "", "Address to listen on")
+	targetAddrPtr := flag.String("to", "", "Address to redirect incoming connections to")
+
+	flag.Parse()
+	if *listenAddrPtr == "" || *targetAddrPtr == "" {
+		flag.Usage()
 		os.Exit(1)
 	}
-	args := os.Args[1:]
 
-	listenAddress := args[0]
-	targetAddress := args[1]
-
-	netpipe.RunTcpTunnel(listenAddress, targetAddress)
+	if *isUdpPtr {
+		udp.RunUdpTunnel(*listenAddrPtr, *targetAddrPtr)
+	} else {
+		tcp.RunTcpTunnel(*listenAddrPtr, *targetAddrPtr)
+	}
 }

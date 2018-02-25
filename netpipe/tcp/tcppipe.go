@@ -1,9 +1,10 @@
-package netpipe
+package tcp
 
 import (
 	"net"
 	"fmt"
 	"os"
+	"netpipes/netpipe/shared"
 )
 
 func RunTcpTunnel(listenAddress string, targetAddress string) {
@@ -70,44 +71,9 @@ func streamTie(c1 net.Conn, c2 net.Conn) {
 	redirect(c2, c1, done)
 }
 
-type Message []byte
-
-func reader(c net.Conn, ch chan Message) {
-	defer close(ch)
-	buff := make([]byte, 1024)
-	for {
-		length, err := c.Read(buff)
-		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
-			return
-		}
-		tmp := make([]byte, length)
-		copy(tmp, buff)
-		ch <- tmp
-	}
-}
-
-func startReader(c net.Conn) <-chan Message {
-	ch := make(chan Message, 10)
-	go reader(c, ch)
-	return ch
-}
-
-func writer(ch chan Message, c net.Conn) {
-	for msg := range ch {
-		c.Write(msg)
-	}
-}
-
-func startWriter(c net.Conn) chan<- Message {
-	ch := make(chan Message, 10)
-	go writer(ch, c)
-	return ch
-}
-
 func redirect(from net.Conn, to net.Conn, done *done) {
-	fc := startReader(from)
-	tc := startWriter(to)
+	fc := shared.StartReader(from)
+	tc := shared.StartWriter(to)
 	defer close(tc)
 	defer fulfillDone(done)
 
