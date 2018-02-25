@@ -1,4 +1,4 @@
-package main
+package netpipe
 
 import (
 	"net"
@@ -44,13 +44,30 @@ func handleConnection(inbound net.Conn, targetAddress string) {
 
 // TODO currently releasing resources is not quite done (if one end ends the connection, the other may still be left open)
 
+type done struct {
+	ch chan interface{}
+}
+
+func makeDone() *done {
+	return &done{make(chan interface{})}
+}
+
+func fulfillDone(done *done) {
+	// TODO there is potential for a race condition here
+	if (done.ch != nil) {
+		close(done.ch)
+		done.ch = nil
+	}
+}
+
 /*
 Ties two connections so that all data send on one of them is redirected to the other.
 Works with stream-like connections (TCP, not UDP).
  */
 func streamTie(c1 net.Conn, c2 net.Conn) {
-	go redirect(c1, c2)
-	redirect(c2, c1)
+	done := makeDone()
+	go redirect(c1, c2, done)
+	redirect(c2, c1, done)
 }
 
 type Message []byte
@@ -61,7 +78,7 @@ func reader(c net.Conn, ch chan Message) {
 	for {
 		length, err := c.Read(buff)
 		if err != nil {
-			fmt.Printf("Error reading: ", err.Error())
+			fmt.Println("Error reading: ", err.Error())
 			return
 		}
 		tmp := make([]byte, length)
@@ -88,12 +105,22 @@ func startWriter(c net.Conn) chan<- Message {
 	return ch
 }
 
-func redirect(from net.Conn, to net.Conn) {
+func redirect(from net.Conn, to net.Conn, done *done) {
 	fc := startReader(from)
 	tc := startWriter(to)
+	defer close(tc)
+	defer fulfillDone(done)
 
-	for msg := range fc {
-		tc <- msg
+	for {
+		select {
+		case msg, ok := <-fc:
+			if !ok {
+				return
+			} else {
+				tc <- msg
+			}
+		case <-done.ch:
+			return
+		}
 	}
-	close(tc)
 }

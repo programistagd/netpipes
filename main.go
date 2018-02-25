@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"netpipes/netpipe"
 )
 
 func main() {
@@ -16,5 +17,5 @@ func main() {
 	listenAddress := args[0]
 	targetAddress := args[1]
 
-	RunTcpTunnel(listenAddress, targetAddress)
+	netpipe.RunTcpTunnel(listenAddress, targetAddress)
 }
